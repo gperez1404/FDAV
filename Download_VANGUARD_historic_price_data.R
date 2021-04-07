@@ -30,20 +30,23 @@ doc <- read_html(content(r, "text"))
 
 # https://rstudio-pubs-static.s3.amazonaws.com/392483_2e403b6b7f4e473b8e87461aa9674599.html
 
-#  packages for scraping JavaScrip libraries: 
+#  libraries for scraping JavaScrip: 
 
 library(purrr)
 library(here)
 library(beepr)
 library(DT)
 
+# libraries  for handling dataframes:
 
 library(dplyr)
 library(rvest)
 library(stringr)
 library(tidyr)
+library(quantmod)
+library(lubridate)
 
-
+# libraries  for plotting and analysing data:
 library(readr)
 library(ggplot2)
 require("ggrepel")
@@ -222,13 +225,40 @@ fund_data.df <- data.frame(fund_names, ticker, asset_class,expense_ratio, price,
 # Drop duplicate rows
 fund_data.df <- fund_data.df %>%distinct()
 
+# Here you get the historical data for all funds
+all_funds <- list()
+number_of_funds<-length(fund_data.df$ticker)
+for(i in seq_along(fund_data.df$ticker)) {
+  
+  print(paste("Extracting time series for fund: ", as.character(fund_data.df$ticker[i]),"....",as.character(i)," out of ",as.character(number_of_funds),sep=""))
+  # Download data indto df
+  all_funds[[i]] <- getSymbols(fund_data.df$ticker[i], src = "yahoo",
+                               auto.assign = FALSE) %>%
+    as.data.frame()
+  # Add ticker column
+  all_funds[[i]]$ticker <- fund_data.df$ticker[i]
+  # Add date column
+  all_funds[[i]]$date <- date(row.names(all_funds[[i]]))
+  # Standardize names
+  names(all_funds[[i]]) <- c("open", "high", "low", "close",
+                             "volume", "adjusted", "ticker", "date")
+}
+
+# Here you combien the historical data into a Combine into a single  df
+fund_history.df <- bind_rows(all_funds)
+
 #------------------------------------------------------------------
 
-# here you export the data to an excel file
+# here you export the data to  excel files
 
 file_name<-paste("VANG-fund-data-",Sys.Date(),".csv",sep="")
 file_path<-paste(results_fp,file_name,sep="/")
 write.csv(fund_data.df,file_path,row.names = FALSE)
+
+file_name<-paste("VANG-funds-historical-data-",Sys.Date(),".csv",sep="")
+file_path<-paste(results_fp,file_name,sep="/")
+write.csv(fund_history.df,file_path,row.names = FALSE)
+
 
 #-----------------------------------------------------------------
 
@@ -264,4 +294,67 @@ ggplot(data=fund_data.df, aes(x=inception, y=since)) +
 
 # here you plot the fund’s expense ratios
 
+# Note: This plot help you to identify the most "economic funds" 
+
+#       Funds that have high returns but high expense ratios are "expensive"
+#       and can leave you with less money in the long run when compared to funds with 
+#       lower returns and lower expense ratios
+
+fund_data.df %>%
+  select(fund_names, expense_ratio, asset_class) %>%
+  mutate(`Asset Class` = sapply(str_split(asset_class, " "), head, 1)) %>%
+  ggplot() +
+  aes(x = reorder(fund_names, expense_ratio), y = expense_ratio, fill = `Asset Class`) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  xlab("") +
+  ylab("") +
+  ggtitle("International funds have higher expense ratios") +
+  theme(axis.text.y = element_text(size = 8)) +
+  scale_fill_hue(c = 56, l = 56) 
+
+# Here you look at the historical performance of all funds to see if any stands out.
+
+# Warning:
+# This plot contains more than 70  time series and there is no legend (hard to read)
+#  You need to manually edit the limit of the Y scale (for 2021 8% is good) 
+fund_history.df %>% group_by(ticker) %>% mutate(scaled_close = close/close[date == min(date)] - 1) %>% ungroup() %>%
+  ggplot() +
+  aes(x = date, y = scaled_close, col = ticker) +
+  geom_line(lwd = 0.5) +
+  scale_y_continuous("Percent of initial",limits = c(-1, 8),breaks = seq(-1, 8, 1)) +
+  scale_x_date("Date",date_breaks = "1 year", date_labels = "%Y") +
+  ggtitle("Historical performance of Vangaurd ETFs (Us domiciled only)") +
+  theme(axis.text.x = element_text(size = 10),panel.grid = element_blank()) +
+  scale_color_discrete(guide = FALSE)
+
+
+# The VGT fund (Vanguard Information Technology ETF) seems to have broken away 
+# from the pack recently, and has been around since 2007. However it’s very volatile
+
+# The typical benchamrk is : VOO = S&P 500 ETF tracker
+
+ticker_interest_ETF<-"VGT"
+list_of_interest_ETFs<-c("VOO",ticker_interest_ETF)
+
+# here you filter out the interest funds and then plot them with legend
+fund_history.df %>%filter(ticker %in% list_of_interest_ETFs) %>% group_by(ticker) %>% mutate(close = close/close[date == min(date)] - 1) %>% ungroup() %>%
+  ggplot() +
+  aes(x = date, y = close, col = ticker) +
+  geom_line() +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  ggtitle(paste("Historical performance of ",ticker_interest_ETF," Vs S&P500 ETF (VOO)",sep="")) +
+  theme(axis.text.x = element_text(size = 8))
+
+
+# here you look  at the overall correlation between a specific ETFand all the other funds.
+# this is useful if you want to hedge the risk by investign in products ataht go in the opposite directaion than stokcs (e.i bonds)
+
+interest_ETF_data <- fund_history.df %>% filter(ticker == ticker_interest_ETF)
+
+cor_with_interest_ETF <- fund_history.df %>% group_by(ticker) %>% 
+  summarise(correlation = cor(close,interest_ETF_data$close[interest_ETF_data$date >= min(date) &interest_ETF_data$date <= max(date)],use = "complete.obs"))
+
+# check the list of the Top 10 ETFs in therms of negative correlations
+cor_with_interest_ETF %>%arrange(correlation) %>% head(10)
 
