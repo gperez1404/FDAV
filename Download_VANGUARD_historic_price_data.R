@@ -1,4 +1,15 @@
 
+
+#  This scrip has two parts :
+
+# Part 1: extraction of historical sell/buy prices of VANGUARD products 
+# domiciled in Australia 
+
+# Part 2: extractrion and  anlysis of ETFs funds VANGUARD US
+
+#----------------------------------------------------------------------------------------
+# part 1
+
 # Scraping and Analyzing Vangaurd ETFs :
 
 # This aprt of the script is to downlaod historical data of buy/sell prices for a especific VANGUARD product
@@ -23,6 +34,8 @@ doc <- read_html(content(r, "text"))
 #  dunno how to proceed  ?....
 
 #------------------------------------------------------------------------------------------
+# part 2 
+# this has been modified from original reference to run in windows
 
 # References:
 
@@ -292,7 +305,7 @@ ggplot(data=fund_data.df, aes(x=inception, y=since)) +
   ggtitle("Average Annual Returns for Vangaurd ETFs") +
   theme(axis.text.x = element_text(size = 12))  
 
-# here you plot the fund’s expense ratios
+# here you plot the funds return expense ratios
 
 # Note: This plot help you to identify the most "economic funds" 
 
