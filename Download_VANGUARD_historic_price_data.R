@@ -41,3 +41,8 @@ js_scrape <- function(url,
   system(command)
   
 }
+
+# Scrape it :
+
+js_scrape(url = target_link)
+
